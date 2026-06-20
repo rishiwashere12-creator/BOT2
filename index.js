@@ -1225,6 +1225,116 @@ function createBot() {
 
     bot.loadPlugin(pathfinder);
 
+// =========================
+// Auto Combat Module
+// Paste directly under:
+// bot.loadPlugin(pathfinder);
+// =========================
+
+const mcData = require('minecraft-data')(bot.version);
+
+let combatTarget = null;
+let combatInterval = null;
+
+function getBestWeapon() {
+    const weapons = bot.inventory.items().filter(item => {
+        const name = item.name.toLowerCase();
+        return (
+            name.includes('sword') ||
+            name.includes('axe') ||
+            name.includes('trident')
+        );
+    });
+
+    if (!weapons.length) return null;
+
+    const damageValues = {
+        wooden_sword: 4,
+        golden_sword: 4,
+        stone_sword: 5,
+        iron_sword: 6,
+        diamond_sword: 7,
+        netherite_sword: 8,
+        wooden_axe: 7,
+        golden_axe: 7,
+        stone_axe: 9,
+        iron_axe: 9,
+        diamond_axe: 9,
+        netherite_axe: 10,
+        trident: 9
+    };
+
+    return weapons.sort((a, b) =>
+        (damageValues[b.name] || 1) - (damageValues[a.name] || 1)
+    )[0];
+}
+
+async function equipBestWeapon() {
+    const weapon = getBestWeapon();
+    if (!weapon) return;
+    try { await bot.equip(weapon, 'hand'); } catch {}
+}
+
+function stopCombat() {
+    if (combatInterval) clearInterval(combatInterval);
+    combatInterval = null;
+    combatTarget = null;
+}
+
+async function startCombat(target) {
+    if (!target || !target.isValid) return;
+    if (combatTarget && combatTarget !== target) return;
+
+    combatTarget = target;
+    await equipBestWeapon();
+
+    if (combatInterval) return;
+
+    combatInterval = setInterval(async () => {
+        if (!combatTarget || !combatTarget.isValid || combatTarget.health <= 0) {
+            stopCombat();
+            return;
+        }
+
+        try {
+            await equipBestWeapon();
+            bot.lookAt(combatTarget.position.offset(0, combatTarget.height || 1, 0), true);
+
+            if (bot.entity.position.distanceTo(combatTarget.position) <= 4.5) {
+                bot.attack(combatTarget);
+            }
+        } catch {}
+    }, 500);
+}
+
+bot.on('entityHurt', (entity) => {
+    if (entity !== bot.entity) return;
+    if (combatTarget && combatTarget.isValid) return;
+
+    let nearestAttacker = null;
+    let nearestDistance = Infinity;
+
+    for (const id in bot.entities) {
+        const e = bot.entities[id];
+        if (!e || e === bot.entity || !e.isValid) continue;
+
+        const d = bot.entity.position.distanceTo(e.position);
+        if (d < 6 && d < nearestDistance) {
+            nearestDistance = d;
+            nearestAttacker = e;
+        }
+    }
+
+    if (nearestAttacker) startCombat(nearestAttacker);
+});
+
+bot.on('entityGone', (entity) => {
+    if (combatTarget && entity.id === combatTarget.id) stopCombat();
+});
+
+bot.on('death', stopCombat);
+
+
     // FIX: connection timeout - end the old bot before reconnecting to avoid ghost bots
     clearBotTimeouts();
     connectionTimeoutId = setTimeout(() => {
