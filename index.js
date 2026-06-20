@@ -1335,7 +1335,68 @@ bot.on('entityGone', (entity) => {
 bot.on('death', stopCombat);
 
 
-    // FIX: connection timeout - end the old bot before reconnecting to avoid ghost bots
+    
+
+// =========================
+// Auto Armor + Smart Auto Eat + Smart Combat Upgrades
+// =========================
+
+function armorScore(name){
+  const scores={leather:1,golden:2,chainmail:3,iron:4,diamond:5,netherite:6};
+  for(const k in scores) if(name.includes(k)) return scores[k];
+  return 0;
+}
+
+async function equipBestArmor(){
+  try{
+    const items=bot.inventory.items();
+    const slots={helmet:'head',chestplate:'torso',leggings:'legs',boots:'feet'};
+    for(const piece in slots){
+      const best=items.filter(i=>i.name.includes(piece))
+        .sort((a,b)=>armorScore(b.name)-armorScore(a.name))[0];
+      if(best) await bot.equip(best, slots[piece]).catch(()=>{});
+    }
+  }catch{}
+}
+setInterval(equipBestArmor,10000);
+
+function getBestFood(){
+  return bot.inventory.items()
+    .filter(i=>i.foodPoints || /(bread|beef|porkchop|chicken|mutton|carrot|potato|apple)/i.test(i.name))
+    .sort((a,b)=>(b.foodPoints||0)-(a.foodPoints||0))[0];
+}
+
+setInterval(async ()=>{
+  try{
+    if(bot.food!==undefined && bot.food<16 && !combatTarget){
+      const food=getBestFood();
+      if(food){
+        await bot.equip(food,'hand').catch(()=>{});
+        await bot.consume().catch(()=>{});
+      }
+    }
+  }catch{}
+},5000);
+
+const {GoalFollow}=goals;
+
+if(typeof startCombat==='function'){
+  const oldStartCombat=startCombat;
+  startCombat=async function(target){
+    await oldStartCombat(target);
+    try{
+      if(target) bot.pathfinder.setGoal(new GoalFollow(target,2),true);
+    }catch{}
+  }
+}
+
+bot.on('entityGone',(e)=>{
+  if(combatTarget && e.id===combatTarget.id){
+    try{ bot.pathfinder.setGoal(null); }catch{}
+  }
+});
+
+// FIX: connection timeout - end the old bot before reconnecting to avoid ghost bots
     clearBotTimeouts();
     connectionTimeoutId = setTimeout(() => {
       if (!botState.connected) {
