@@ -2248,3 +2248,65 @@ addLog(
 addLog("=".repeat(50));
 
 createBot();
+
+
+
+
+/* ===============================
+   SAMY OWNER/PERMISSIONS MODULE
+   Auto-generated extension
+   =============================== */
+try {
+const fs = require('fs');
+const ALLOWED_FILE = './allowed_players.json';
+let ownerName = 'ItsSatricCoast';
+let allowedPlayers = [];
+try {
+  if (fs.existsSync(ALLOWED_FILE)) {
+    allowedPlayers = JSON.parse(fs.readFileSync(ALLOWED_FILE,'utf8'));
+  }
+} catch {}
+
+function saveAllowed(){
+  try { fs.writeFileSync(ALLOWED_FILE, JSON.stringify([...new Set(allowedPlayers)],null,2)); } catch {}
+}
+
+function isOwner(name){ return String(name||'').toLowerCase()===ownerName.toLowerCase(); }
+function isAllowed(name){ return isOwner(name) || allowedPlayers.map(v=>v.toLowerCase()).includes(String(name||'').toLowerCase()); }
+
+if (typeof bot !== 'undefined' && bot) {
+  bot.on('whisper',(username,message)=>{
+    const msg=(message||'').trim();
+    const args=msg.split(/\s+/);
+    const cmd=(args.shift()||'').toLowerCase();
+
+    if(isOwner(username)){
+      if(cmd==='allow' && args[0]){
+        if(!allowedPlayers.includes(args[0])) allowedPlayers.push(args[0]);
+        saveAllowed();
+        bot.whisper(username, `${args[0]} allowed.`);
+      }
+      if(cmd==='deny' && args[0]){
+        allowedPlayers=allowedPlayers.filter(p=>p.toLowerCase()!==args[0].toLowerCase());
+        saveAllowed();
+        bot.whisper(username, `${args[0]} denied.`);
+      }
+      if(cmd==='listallowed'){
+        bot.whisper(username, allowedPlayers.join(', ') || 'No allowed players.');
+      }
+    }
+
+    if(!isAllowed(username)) return;
+
+    if(cmd==='status') bot.whisper(username,'Samy online.');
+    if(cmd==='inventory') bot.whisper(username, bot.inventory.items().map(i=>i.name).join(', ') || 'Empty');
+    if(cmd==='come' && bot.players[username]?.entity){
+      bot.pathfinder.setGoal(new goals.GoalNear(
+        bot.players[username].entity.position.x,
+        bot.players[username].entity.position.y,
+        bot.players[username].entity.position.z, 1));
+    }
+    if(cmd==='stop') bot.pathfinder.setGoal(null);
+  });
+}
+} catch(e) {}
